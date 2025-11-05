@@ -61,6 +61,60 @@ app.get('/health', async (req, res) => {
   }
 });
 
+// Create a stock count
+app.post('/api/stock', async (req, res) => {
+  try {
+    const { item_name, quantity, location, counted_at } = req.body;
+
+    if (!item_name || quantity == null || !location) {
+      return res.status(400).json({ ok: false, error: 'item_name, quantity, location required' });
+    }
+
+    // optional counted_at (ISO "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DD")
+    const sql = counted_at
+      ? 'INSERT INTO stock_counts (item_name, quantity, location, counted_at) VALUES (?, ?, ?, ?)'
+      : 'INSERT INTO stock_counts (item_name, quantity, location) VALUES (?, ?, ?)';
+
+    const params = counted_at
+      ? [item_name.trim(), Number(quantity), String(location).trim(), counted_at]
+      : [item_name.trim(), Number(quantity), String(location).trim()];
+
+    const [result] = await pool.execute(sql, params);
+    res.json({ ok: true, id: result.insertId });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// List stock counts (optionally filter by date)
+app.get('/api/stock', async (req, res) => {
+  try {
+    const { date } = req.query; // e.g. 2025-11-05
+    let rows;
+
+    if (date) {
+      [rows] = await pool.execute(
+        `SELECT id, item_name, quantity, location, counted_at
+         FROM stock_counts
+         WHERE DATE(counted_at) = ?
+         ORDER BY counted_at DESC, item_name ASC`,
+        [date]
+      );
+    } else {
+      [rows] = await pool.execute(
+        `SELECT id, item_name, quantity, location, counted_at
+         FROM stock_counts
+         ORDER BY counted_at DESC
+         LIMIT 200`
+      );
+    }
+
+    res.json({ ok: true, rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`API listening on ${PORT}`);
 });
